@@ -1,0 +1,71 @@
+name: thesis
+
+services:
+  db:
+    image: docker.io/library/postgres:18
+    environment:
+      POSTGRES_DB: thesis
+      POSTGRES_USER: thesis
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-thesis-only}
+    ports:
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - database:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U thesis -d thesis']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  datastore:
+    build:
+      context: ${ANALYZER_DIR:-../analyzer}
+      dockerfile: datastore/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://thesis:${POSTGRES_PASSWORD:-local-thesis-only}@db:5432/thesis
+      STUDY_DATASET_KIND: ${STUDY_DATASET_KIND:-preflight}
+      HOST: 0.0.0.0
+      PORT: 3001
+    ports:
+      - '127.0.0.1:${DATASTORE_PORT:-3001}:3001'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '--input-type=module',
+          '-e',
+          "const response = await fetch('http://127.0.0.1:3001/api/health'); if (!response.ok) process.exit(1)",
+        ]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    depends_on:
+      db:
+        condition: service_healthy
+  app:
+    build:
+      context: .
+      target: app
+    environment:
+      DATASTORE_URL: http://datastore:3001
+    ports:
+      - '127.0.0.1:${APP_PORT:-3000}:3000'
+    depends_on:
+      datastore:
+        condition: service_healthy
+  analyzer:
+    profiles: [analysis]
+    build:
+      context: ${ANALYZER_DIR:-../analyzer}/packages/input-analyzer
+    environment:
+      DATABASE_URL: postgresql://thesis:${POSTGRES_PASSWORD:-local-thesis-only}@db:5432/thesis
+    volumes:
+      - ./artifacts:/artifacts:z
+      - '${PAPER_GENERATED_DIR:-../paper/generated}:/publication:z'
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  database:

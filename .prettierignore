@@ -1,0 +1,19 @@
+# Nuxt dev/build outputs
+.output
+.nuxt
+.nitro
+.data
+.cache
+dist
+
+# Dependencies
+node_modules
+vendor
+
+# Test outputs
+test-results
+playwright-report
+artifacts
+
+# Lockfiles
+package-lock.json
